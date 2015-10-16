@@ -7,48 +7,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <tbb/concurrent_unordered_set.h>
 #include "bitset.h"
 #include "mrlock.h"
 
 #define N 1000
 #define thread_num 5
 
-MRLock<Bitset> m(1000);
+using namespace tbb;
 
+std::mutex m;
 
+concurrent_unordered_set<int> set; 
 
-template <typename T>
-uint32_t lock(T * keys){
-	int i;
-	uint32_t unlockVar;
-	Bitset  b;
-	b.Resize(1000);
-	
-	for(i=0;i<thread_num;i++)
-	{
-		b.Set(keys[i]);
-	}	
-	unlockVar = m.Lock(b);
-	return unlockVar;
-}
+void insertIfContains(int x,int y);
+void deleteThenInsert(int x,int y);
 
-
-
-template <typename T>
-void unlock(T un){
-	int i;
-		
-	m.Unlock(un);
-}
 
 
 void* test(void *args){
     int * keys= (int *)args;
-    uint32_t un=lock(keys);
-    usleep(rand()%200);
-    unlock(un);
+    int i,temp;
+
+	for(i=0;i<thread_num;i++)
+		{	do{
+			temp=rand()%N;
+			}while(temp==keys[i]);
+			insertIfContains(temp,keys[i]);
+			std::cout<<"IIC"<<temp<<"and"<<keys[i];	
+		}	
+	for(i=0;i<thread_num;i++)
+		{
+			do{
+			temp=rand()%N;
+			}while(temp==keys[i]);
+			deleteThenInsert(temp,keys[i]);
+		}	
     pthread_exit(0);
 }
+
+
+
+
+
+
 
 
 int main(){
@@ -57,6 +59,10 @@ int main(){
     int i,j;
     pthread_t *tid;
     int **keys;
+	int count=1;
+	//seeding the set
+	for(i=0;i<thread_num;i++)
+	set.insert(i);
 
     tid = (pthread_t *)malloc(sizeof(pthread_t)*thread_num);
 
@@ -67,7 +73,7 @@ int main(){
     for(j=0;j<thread_num;j++)
         for(i=0;i<thread_num;i++)
             {
-                keys[j][i]=((i+1)*(j+1));
+                keys[j][i]=count++;
                // std::cout<<keys[j][i]<<"\n";
             }
 
@@ -88,3 +94,30 @@ int main(){
     return 1;
 }
 
+
+
+void insertIfContains(int x,int y){
+	int k[2];
+	k[0]=x;
+	k[1]=y;	
+	m.lock();
+	if((set.find(x))!=set.end())
+		set.insert(y);
+
+	m.unlock();
+
+}
+
+
+void deleteThenInsert(int x,int y){
+	int k[2];
+	k[0]=x;
+	k[1]=y;	
+	m.lock();
+	if(set.unsafe_erase(x))
+		set.insert(y);
+
+	m.unlock();
+
+
+}

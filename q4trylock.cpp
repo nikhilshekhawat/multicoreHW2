@@ -1,0 +1,158 @@
+#include <mutex>
+#include <thread>
+#include <iostream>
+#include <vector>
+#include <functional>
+#include <chrono>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <tbb/concurrent_unordered_set.h>
+#include "bitset.h"
+#include "mrlock.h"
+
+#define N 1000
+#define thread_num 5
+
+using namespace tbb;
+
+std::mutex * mutexes;
+
+concurrent_unordered_set<int> set; 
+
+void insertIfContains(int x,int y);
+void deleteThenInsert(int x,int y);
+
+
+
+
+template <typename T>
+void lock(T * keys){
+    int i,j;
+    bool ret=true;
+    while(true){
+    for(i=0;i<2;i++)
+    {
+        ret=mutexes[keys[i]].try_lock();
+        if(ret==false)
+            break;
+    }
+    if(ret==false)
+    {
+        for(;i>=0;i--)
+            mutexes[keys[i]].unlock();
+    }
+    if(ret==true)
+       { std::cout << "locked\n";
+        break;
+        }
+    }
+}
+
+
+template <typename T>
+void unlock(T * keys){
+    int i;
+    for(i=0;i<2;i++)
+    {
+       mutexes[keys[i]].unlock();
+        std::cout <<"unlocked"<<keys[i]<<"\n";
+    }     
+}
+
+void* test(void *args){
+    int * keys= (int *)args;
+    int i,temp;
+
+	for(i=0;i<thread_num;i++)
+		{	do{
+			temp=rand()%N;
+			}while(temp==keys[i]);
+			insertIfContains(temp,keys[i]);
+			std::cout<<"IIC"<<temp<<"and"<<keys[i];	
+		}	
+	for(i=0;i<thread_num;i++)
+		{
+			do{
+			temp=rand()%N;
+			}while(temp==keys[i]);
+			deleteThenInsert(temp,keys[i]);
+		}	
+    pthread_exit(0);
+}
+
+
+
+
+
+
+
+
+int main(){
+
+	
+    int i,j;
+    pthread_t *tid;
+    int **keys;
+	int count=1;
+	//seeding the set
+	for(i=0;i<thread_num;i++)
+	set.insert(i);
+	 mutexes = new std::mutex[N];
+    tid = (pthread_t *)malloc(sizeof(pthread_t)*thread_num);
+
+	keys = (int**)malloc(sizeof(int *)*thread_num);
+    for(i=0;i<thread_num;i++)
+        keys[i]=(int*)malloc(sizeof(int)*thread_num);
+
+    for(j=0;j<thread_num;j++)
+        for(i=0;i<thread_num;i++)
+            {
+                keys[j][i]=count++;
+               // std::cout<<keys[j][i]<<"\n";
+            }
+
+    for (i = 0; i < thread_num; i++) 
+    { 
+        if(pthread_create( tid + i, 0, test, (void*)keys[i]) != 0) 
+        {
+            perror("pthread_create() failure."); 
+            exit(1); 
+        } 
+    } 
+
+
+    for (int i = 0; i < thread_num; i++)
+       pthread_join(tid[i], NULL);
+    
+    std::cout<<"program completed successfully"<<"\n";
+    return 1;
+}
+
+
+
+void insertIfContains(int x,int y){
+	int k[2];
+	k[0]=x;
+	k[1]=y;	
+	lock(k);
+	if((set.find(x))!=set.end())
+		set.insert(y);
+
+	unlock(k);
+
+}
+
+
+void deleteThenInsert(int x,int y){
+	int k[2];
+	k[0]=x;
+	k[1]=y;	
+	lock(k);
+	if(set.unsafe_erase(x))
+		set.insert(y);
+
+	unlock(k);
+
+
+}

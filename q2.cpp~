@@ -14,13 +14,13 @@
 #define thread_num 5
 
 MRLock<Bitset> m(1000);
-
+int unlockVar;
 
 
 template <typename T>
 uint32_t lock(T * keys){
 	int i;
-	uint32_t unlockVar;
+	
 	Bitset  b;
 	b.Resize(1000);
 	
@@ -29,7 +29,7 @@ uint32_t lock(T * keys){
 		b.Set(keys[i]);
 	}	
 	unlockVar = m.Lock(b);
-	return unlockVar;
+
 }
 
 
